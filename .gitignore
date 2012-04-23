@@ -106,3 +106,14 @@ regressions/ck_brlock/benchmark/throughput
 regressions/ck_rwlock/benchmark/throughput
 regressions/ck_queue/validate/ck_list
 regressions/ck_queue/validate/ck_slist
+regressions/ck_bag/validate/order
+regressions/ck_bitmap/validate/serial
+regressions/ck_ht/benchmark/parallel_bytestring
+regressions/ck_ht/benchmark/parallel_direct
+regressions/ck_ht/benchmark/serial
+regressions/ck_ht/validate/serial
+regressions/ck_ring/benchmark/latency
+regressions/ck_semaphore/validate/ck_semaphore
+regressions/ck_spinlock/benchmark/ck_spinlock.LATENCY
+regressions/ck_spinlock/benchmark/ck_spinlock.THROUGHPUT
+regressions/ck_spinlock/validate/ck_spinlock
