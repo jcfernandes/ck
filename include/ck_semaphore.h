@@ -51,19 +51,19 @@ ck_semaphore_getvalue(struct ck_semaphore * sem)
 CK_CC_INLINE static void
 ck_semaphore_wait(struct ck_semaphore * sem)
 {
+	unsigned int current = ck_pr_load_uint(&sem->counter);
 	do {
-		unsigned int temp;
-		while ((temp = ck_pr_load_uint(&sem->counter)) == 0) ck_pr_stall();
-		if (ck_pr_cas_uint(&sem->counter, temp, temp - 1)) break;
-	} while (1);
+		if (current != 0) continue;
+		while ((current = ck_pr_load_uint(&sem->counter)) == 0) ck_pr_stall();
+	} while (ck_pr_cas_uint_value(&sem->counter, current, current - 1, &current) == false);
 }
 
 CK_CC_INLINE static bool
 ck_semaphore_trywait(struct ck_semaphore * sem)
 {
-	unsigned int temp;
-	if ((temp = ck_pr_load_uint(&sem->counter)) == 0) return false;
-	return ck_pr_cas_uint(&sem->counter, temp, temp - 1);
+	unsigned int current = ck_pr_load_uint(&sem->counter);
+	if (current == 0) return false;
+	return ck_pr_cas_uint(&sem->counter, current, current - 1);
 }
 
 CK_CC_INLINE static void
