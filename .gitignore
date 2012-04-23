@@ -1,5 +1,6 @@
-*~
-Makefile
+/Makefile
+doc/Makefile
+doc/*.gz
 build/ck.spec
 build/ck.build
 build/ck.pc
