@@ -1,5 +1,6 @@
 .\"
 .\" Copyright 2012 Samy Al Bahra.
+.\" Copyright 2012 Shreyas Prasad.
 .\" All rights reserved.
 .\"
 .\" Redistribution and use in source and binary forms, with or without
@@ -24,61 +25,46 @@
 .\" SUCH DAMAGE.
 .\"
 .\"
-.Dd April 22, 2012
-.Dt CK_BITMAP_INIT 3
+.Dd April 27, 2012
+.Dt CK_BITMAP_ITERATOR_INIT 3
 .Sh NAME
-.Nm ck_bitmap_init
-.Nd initialize a bitmap
+.Nm ck_bitmap_iterator_init
+.Nd initialize bitmap iterator
 .Sh LIBRARY
 Concurrency Kit (libck, \-lck)
 .Sh SYNOPSIS
-.In ck_bitmap.h
+.In ck_ht.h
+.Pp
 .Ft void
-.Fn ck_bitmap_init "ck_bitmap_t *bitmap" "unsigned int n_bits" "bool set"
+.Fn ck_bitmap_iterator_init "ck_bitmap_iterator_t *iterator" "ck_bitmap_t *bitmap"
 .Sh DESCRIPTION
 The
-.Fn ck_bitmap_init
-function initializes the bitmap pointed to by the
-.Fa bitmap
-pointer. The argument
-.Fa n_bits
-specifies the number of bits that are to be stored in the bitmap.
-The argument
-.Fa set
-determines whether the values of the bits in
-.Fa bitmap
-are to be initialized to
-.Dv 1
-or
-.Dv 0 .
+.Fn ck_bitmap_iterator_init
+function will initialize the object pointed to by
+the
+.Fa iterator
+argument for use with
+.Fa bitmap .
 .Pp
-It is expected that
-.Fa bitmap
-points to a contiguous region of memory containing at least
-the number of bytes specified by
-.Xr ck_bitmap_size 3 .
+An iterator is used to iterate through set bitmap bits
+with the
+.Xr ck_bitmap_next 3
+function.
 .Sh RETURN VALUES
-This function has no return value.
+The
+.Fn ck_bitmap_iterator_init
+function does not return a value.
 .Sh ERRORS
-.Bl -tag -width Er
-.Pp
-The behavior of
-.Fn ck_bitmap_init
-is undefined if
-.Fa bitmap
-is not a pointer to a region of bytes
-of at least
-.Xr ck_bitmap_size 3
-length.
-.El
+This function will not fail.
 .Sh SEE ALSO
 .Xr ck_bitmap_base 3 ,
 .Xr ck_bitmap_size 3 ,
+.Xr ck_bitmap_init 3 ,
 .Xr ck_bitmap_set_mpmc 3 ,
 .Xr ck_bitmap_reset_mpmc 3 ,
 .Xr ck_bitmap_clear 3 ,
-.Xr ck_bitmap_test 3 ,
 .Xr ck_bitmap_bits 3 ,
-.Xr ck_bitmap_buffer 3
+.Xr ck_bitmap_buffer 3 ,
+.Xr ck_bitmap_next 3
 .Pp
 Additional information available at http://concurrencykit.org/
