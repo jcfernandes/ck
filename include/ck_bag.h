@@ -29,8 +29,10 @@
 #define _CK_BAG_H
 
 #include <ck_cc.h>
-#include <ck_pr.h>
 #include <ck_malloc.h>
+#include <ck_md.h>
+#include <ck_pr.h>
+#include <ck_queue.h>
 #include <ck_stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -52,7 +54,6 @@
  * of the array. Empty entries are stored at the back.
  */
 
-
 /*
  * Bag growth strategies.
  */
@@ -71,10 +72,17 @@ struct ck_bag_block_info {
 	size_t bytes;
 };
 
+/*
+ * Determine whether pointer packing should be enabled.
+ */
+#if defined(CK_BAG_PP) && defined(CK_MD_POINTER_PACK_ENABLE)
+#define CK_BAG_PP
+#endif
+
 #define CK_BAG_DEFAULT 0
 
 struct ck_bag_block_md {
-#ifdef __x86_64__
+#ifdef CK_BAG_PP
 	struct ck_bag_block *ptr;
 #else
 	struct ck_bag_block *ptr;
@@ -84,15 +92,13 @@ struct ck_bag_block_md {
 
 struct ck_bag_block {
 	struct ck_bag_block_md next;
-	struct ck_bag_block *avail_next;
-	struct ck_bag_block *avail_prev;
+	CK_LIST_ENTRY(ck_bag_block) avail_entry;
 	void *array[];
 } CK_CC_CACHELINE;
 
 struct ck_bag {
 	struct ck_bag_block *head;
-	struct ck_bag_block *avail_head;
-	struct ck_bag_block *avail_tail;
+	CK_LIST_HEAD(avail_list, ck_bag_block) avail_blocks;
 	unsigned int n_entries;
 	unsigned int n_blocks;
 	enum ck_bag_allocation_strategy alloc_strat;
@@ -107,7 +113,7 @@ struct ck_bag_iterator {
 };
 typedef struct ck_bag_iterator ck_bag_iterator_t;
 
-#ifdef __x86_64__
+#ifdef CK_BAG_PP
 #define CK_BAG_BLOCK_ENTRIES_MASK ((uintptr_t)0xFFFF << 48)
 #endif
 
@@ -115,7 +121,7 @@ CK_CC_INLINE static struct ck_bag_block *
 ck_bag_block_next(struct ck_bag_block *block)
 {
 
-#ifdef __x86_64__
+#ifdef CK_BAG_PP
 	return (struct ck_bag_block *)((uintptr_t)block & ~CK_BAG_BLOCK_ENTRIES_MASK);
 #else
 	return block;
@@ -133,7 +139,7 @@ CK_CC_INLINE static uint16_t
 ck_bag_block_count(struct ck_bag_block *block)
 {
 
-#ifdef __x86_64__
+#ifdef CK_BAG_PP
 	return (uintptr_t)ck_pr_load_ptr(&block->next.ptr) >> 48;
 #else
 	return (uintptr_t)ck_pr_load_ptr(&block->next.n_entries);
@@ -146,6 +152,7 @@ ck_bag_iterator_init(ck_bag_iterator_t *iterator, ck_bag_t *bag)
 
 	iterator->block = ck_pr_load_ptr(&bag->head);
 	iterator->index = 0;
+	iterator->n_entries = 0;
 	if (iterator->block != NULL)
 		iterator->n_entries = ck_bag_block_count(iterator->block);
 
