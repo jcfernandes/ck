@@ -119,7 +119,7 @@ rdtsc(void)
 				:
 				: "memory");
         return r;
-#elif defined(__ppc64__)
+#elif defined(__ppc64__) || defined(__ppc__)
      uint32_t high, low, snapshot;
 
      do {
