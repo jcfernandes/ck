@@ -1,6 +1,7 @@
 /Makefile
 doc/Makefile
 doc/*.gz
+include/ck_md.h
 build/ck.spec
 build/ck.build
 build/ck.pc
