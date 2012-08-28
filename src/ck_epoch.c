@@ -30,6 +30,7 @@
  *   of Cambridge Computing Laboratory.
  */
 
+#include <ck_backoff.h>
 #include <ck_cc.h>
 #include <ck_epoch.h>
 #include <ck_pr.h>
@@ -70,6 +71,7 @@ ck_epoch_recycle(struct ck_epoch *global)
 		record = ck_epoch_record_container(cursor);
 
 		if (ck_pr_load_uint(&record->status) == CK_EPOCH_FREE) {
+			ck_pr_fence_load();
 			status = ck_pr_fas_uint(&record->status, CK_EPOCH_USED);
 			if (status == CK_EPOCH_FREE) {
 				ck_pr_dec_uint(&global->n_free);
@@ -108,7 +110,6 @@ ck_epoch_unregister(struct ck_epoch_record *record)
 {
 	size_t i;
 
-	record->status = CK_EPOCH_FREE;
 	record->active = 0;
 	record->epoch = 0;
 	record->delta = 0;
@@ -119,8 +120,9 @@ ck_epoch_unregister(struct ck_epoch_record *record)
 	for (i = 0; i < CK_EPOCH_LENGTH; i++)
 		ck_stack_init(&record->pending[i]);
 
-	ck_pr_inc_uint(&record->global->n_free);
 	ck_pr_fence_store();
+	ck_pr_store_uint(&record->status, CK_EPOCH_FREE);
+	ck_pr_inc_uint(&record->global->n_free);
 	return;
 }
 
@@ -131,7 +133,6 @@ ck_epoch_tick(struct ck_epoch *global, struct ck_epoch_record *record)
 	ck_stack_entry_t *cursor;
 	unsigned int g_epoch = ck_pr_load_uint(&global->epoch);
 
-	g_epoch &= CK_EPOCH_LENGTH - 1;
 	CK_STACK_FOREACH(&global->records, cursor) {
 		c_record = ck_epoch_record_container(cursor);
 		if (ck_pr_load_uint(&c_record->status) == CK_EPOCH_FREE ||
@@ -143,7 +144,13 @@ ck_epoch_tick(struct ck_epoch *global, struct ck_epoch_record *record)
 			return;
 	}
 
-	ck_pr_inc_uint(&global->epoch);
+	/*
+	 * If we have multiple writers, it is much easier to starve
+	 * reclamation if we loop through the epoch domain. It may
+	 * be worth it to add an SPMC variant to ck_epoch that relies
+	 * on atomic increment operations instead.
+	 */
+	ck_pr_cas_uint(&global->epoch, g_epoch, (g_epoch + 1) & (CK_EPOCH_LENGTH - 1));
 	return;
 }
 
@@ -155,7 +162,6 @@ ck_epoch_reclaim(struct ck_epoch_record *record)
 	unsigned int epoch = record->epoch;
 	ck_stack_entry_t *next, *cursor;
 
-	g_epoch &= CK_EPOCH_LENGTH - 1;
 	if (epoch == g_epoch)
 		return false;
 
@@ -167,13 +173,14 @@ ck_epoch_reclaim(struct ck_epoch_record *record)
 	 */
 	CK_STACK_FOREACH_SAFE(&record->pending[g_epoch], cursor, next) {
 		struct ck_epoch_entry *entry = ck_epoch_entry_container(cursor);
+
 		entry->destroy(entry);
 		record->n_pending--;
 		record->n_reclamations++;
 	}
 
 	ck_stack_init(&record->pending[g_epoch]);
-	record->epoch = g_epoch;
+	ck_pr_store_uint(&record->epoch, g_epoch);
 	record->delta = 0;
 	return true;
 }
@@ -184,7 +191,6 @@ ck_epoch_write_begin(struct ck_epoch_record *record)
 	struct ck_epoch *global = record->global;
 
 	ck_pr_store_uint(&record->active, record->active + 1);
-	ck_pr_fence_store();
 
 	/*
 	 * In the case of recursive write sections, avoid ticking
@@ -193,10 +199,19 @@ ck_epoch_write_begin(struct ck_epoch_record *record)
 	if (record->active > 1)
 		return;
 
+	ck_pr_fence_memory();
 	for (;;) {
+		/*
+		 * Reclaim deferred objects if possible and
+		 * acquire a new snapshot of the global epoch.
+		 */
 		if (ck_epoch_reclaim(record) == true)
 			break;
 
+		/*
+		 * If we are above the global epoch record threshold,
+		 * attempt to tick over the global epoch counter.
+		 */
 		if (++record->delta >= global->threshold) {
 			record->delta = 0;
 			ck_epoch_tick(global, record);

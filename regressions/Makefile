@@ -1,7 +1,26 @@
-.PHONY: all clean
+DIR=backoff	\
+    bag		\
+    barrier	\
+    bitmap	\
+    brlock	\
+    bytelock	\
+    epoch	\
+    fifo	\
+    hp		\
+    ht		\
+    pr		\
+    queue	\
+    ring	\
+    rwlock	\
+    sequence	\
+    spinlock	\
+    stack
+
+.PHONY: all clean check
 
 all:
 	$(MAKE) -C ./ck_bitmap/validate all
+	$(MAKE) -C ./ck_backoff/validate all
 	$(MAKE) -C ./ck_queue/validate all
 	$(MAKE) -C ./ck_brlock/validate all
 	$(MAKE) -C ./ck_semaphore/validate all
@@ -31,6 +50,7 @@ all:
 	$(MAKE) -C ./ck_bag/validate all
 
 clean:
+	$(MAKE) -C ./ck_backoff/validate clean
 	$(MAKE) -C ./ck_bitmap/validate clean
 	$(MAKE) -C ./ck_queue/validate clean
 	$(MAKE) -C ./ck_brlock/validate clean
@@ -59,4 +79,13 @@ clean:
 	$(MAKE) -C ./ck_hp/validate clean
 	$(MAKE) -C ./ck_hp/benchmark clean
 	$(MAKE) -C ./ck_bag/validate clean
+
+check: all
+	rc=0; 							\
+	for d in $(DIR) ; do					\
+		echo "----[ Testing $$d....";			\
+		$(MAKE) -C ./ck_$$d/validate check || rc=1; 	\
+		echo;						\
+	done; 							\
+	exit $$rc
 

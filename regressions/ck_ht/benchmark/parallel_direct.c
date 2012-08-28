@@ -119,14 +119,24 @@ static struct ck_malloc my_allocator = {
 };
 
 static void
+hash_function(ck_ht_hash_t *h, const void *key, size_t key_length, uint64_t seed)
+{
+	const uintptr_t *value = key;
+
+	(void)key_length;
+	(void)seed;
+	h->value = *value;
+	return;
+}
+
+static void
 table_init(void)
 {
 
 	ck_epoch_init(&epoch_ht, 10);
 	ck_epoch_register(&epoch_ht, &epoch_wr);
 	srand48((long int)time(NULL));
-	ck_ht_allocator_set(&my_allocator);
-	if (ck_ht_init(&ht, CK_HT_MODE_DIRECT, 8, lrand48()) == false) {
+	if (ck_ht_init(&ht, CK_HT_MODE_DIRECT, hash_function, &my_allocator, 8, lrand48()) == false) {
 		perror("ck_ht_init");
 		exit(EXIT_FAILURE);
 	}
@@ -152,7 +162,7 @@ table_replace(uintptr_t value)
 	ck_ht_hash_t h;
 
 	ck_ht_hash_direct(&h, &ht, value);
-	ck_ht_entry_set_direct(&entry, value, 6605241);
+	ck_ht_entry_set_direct(&entry, h, value, 6605241);
 	return ck_ht_set_spmc(&ht, h, &entry);
 }
 
@@ -177,7 +187,7 @@ table_insert(uintptr_t value)
 	ck_ht_hash_t h;
 
 	ck_ht_hash_direct(&h, &ht, value);
-	ck_ht_entry_set_direct(&entry, value, value);
+	ck_ht_entry_set_direct(&entry, h, value, value);
 	return ck_ht_put_spmc(&ht, h, &entry);
 }
 

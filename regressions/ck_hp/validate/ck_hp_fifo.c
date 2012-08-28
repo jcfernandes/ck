@@ -81,11 +81,36 @@ test(void *c)
 			entry->tid = context->tid;
 			ck_hp_fifo_enqueue_mpmc(&record, &fifo, fifo_entry, entry);
 
+			ck_pr_barrier();
+
 			fifo_entry = ck_hp_fifo_dequeue_mpmc(&record, &fifo, &entry);
 			if (fifo_entry == NULL) {
 				fprintf(stderr, "ERROR [%u] Queue should never be empty.\n", context->tid);
 				exit(EXIT_FAILURE);
 			}
+
+			ck_pr_barrier();
+
+			if (entry->tid < 0 || entry->tid >= nthr) {
+				fprintf(stderr, "ERROR [%u] Incorrect value in entry.\n", entry->tid);
+				exit(EXIT_FAILURE);
+			}
+
+			ck_hp_free(&record, &fifo_entry->hazard, fifo_entry, fifo_entry);
+		}
+	}
+
+	for (i = 0; i < ITERATIONS; i++) {
+		for (j = 0; j < size; j++) {
+			fifo_entry = malloc(sizeof(ck_hp_fifo_entry_t));
+			entry = malloc(sizeof(struct entry));
+			entry->tid = context->tid;
+
+			while (ck_hp_fifo_tryenqueue_mpmc(&record, &fifo, fifo_entry, entry) == false)
+				ck_pr_stall();
+
+			while (fifo_entry = ck_hp_fifo_trydequeue_mpmc(&record, &fifo, &entry), fifo_entry == NULL)
+				ck_pr_stall();
 
 			if (entry->tid < 0 || entry->tid >= nthr) {
 				fprintf(stderr, "ERROR [%u] Incorrect value in entry.\n", entry->tid);
