@@ -27,7 +27,6 @@
 #ifndef _CK_STACK_H
 #define _CK_STACK_H
 
-#include <ck_backoff.h>
 #include <ck_cc.h>
 #include <ck_pr.h>
 #include <stdbool.h>
@@ -41,7 +40,7 @@ typedef struct ck_stack_entry ck_stack_entry_t;
 struct ck_stack {
 	struct ck_stack_entry *head;
 	char *generation CK_CC_PACKED;
-};
+} CK_CC_ALIASED;
 typedef struct ck_stack ck_stack_t;
 
 #define CK_STACK_INITIALIZER { NULL, NULL }
@@ -55,19 +54,38 @@ CK_CC_INLINE static void
 ck_stack_push_upmc(struct ck_stack *target, struct ck_stack_entry *entry)
 {
 	struct ck_stack_entry *stack;
-	ck_backoff_t backoff = CK_BACKOFF_INITIALIZER;
 
 	stack = ck_pr_load_ptr(&target->head);
-	ck_pr_store_ptr(&entry->next, stack);
+	entry->next = stack;
+	ck_pr_fence_store();
 
 	while (ck_pr_cas_ptr_value(&target->head, stack, entry, &stack) == false) {
-		ck_pr_store_ptr(&entry->next, stack);
-		ck_backoff_eb(&backoff);
+		entry->next = stack;
+		ck_pr_fence_store();
 	}
 
 	return;
 }
 #endif /* CK_F_STACK_PUSH_UPMC */
+
+#ifndef CK_F_STACK_TRYPUSH_UPMC
+#define CK_F_STACK_TRYPUSH_UPMC
+/*
+ * Stack producer operation for multiple unique producers and multiple consumers.
+ * Returns true on success and false on failure.
+ */
+CK_CC_INLINE static bool
+ck_stack_trypush_upmc(struct ck_stack *target, struct ck_stack_entry *entry)
+{
+	struct ck_stack_entry *stack;
+
+	stack = ck_pr_load_ptr(&target->head);
+	entry->next = stack;
+	ck_pr_fence_store();
+
+	return ck_pr_cas_ptr(&target->head, stack, entry);
+}
+#endif /* CK_F_STACK_TRYPUSH_UPMC */
 
 #ifndef CK_F_STACK_POP_UPMC
 #define CK_F_STACK_POP_UPMC
@@ -77,23 +95,52 @@ ck_stack_push_upmc(struct ck_stack *target, struct ck_stack_entry *entry)
 CK_CC_INLINE static struct ck_stack_entry *
 ck_stack_pop_upmc(struct ck_stack *target)
 {
-	struct ck_stack_entry *entry;
-	ck_backoff_t backoff = CK_BACKOFF_INITIALIZER;
+	struct ck_stack_entry *entry, *next;
 
 	entry = ck_pr_load_ptr(&target->head);
 	if (entry == NULL)
 		return (NULL);
 
-	while (ck_pr_cas_ptr_value(&target->head, entry, entry->next, &entry) == false) {
-		if (ck_pr_load_ptr(&entry) == NULL)
+	ck_pr_fence_load();
+	next = entry->next;
+	while (ck_pr_cas_ptr_value(&target->head, entry, next, &entry) == false) {
+		if (entry == NULL)
 			break;
 
-		ck_backoff_eb(&backoff);
+		ck_pr_fence_load();
+		next = entry->next;
 	}
 
 	return (entry);
 }
 #endif
+
+#ifndef CK_F_STACK_TRYPOP_UPMC
+#define CK_F_STACK_TRYPOP_UPMC
+/*
+ * Stack production operation for multiple unique producers and multiple consumers.
+ * Returns true on success and false on failure. The value pointed to by the second
+ * argument is set to a valid ck_stack_entry_t reference if true is returned. If
+ * false is returned, then the value pointed to by the second argument is undefined.
+ */
+CK_CC_INLINE static bool
+ck_stack_trypop_upmc(struct ck_stack *target, struct ck_stack_entry **r)
+{
+	struct ck_stack_entry *entry;
+
+	entry = ck_pr_load_ptr(&target->head);
+	if (entry == NULL)
+		return false;
+
+	ck_pr_fence_load();
+	if (ck_pr_cas_ptr(&target->head, entry, entry->next) == true) {
+		*r = entry;
+		return true;
+	}
+
+	return false;
+}
+#endif /* CK_F_STACK_TRYPOP_UPMC */
 
 #ifndef CK_F_STACK_BATCH_POP_UPMC
 #define CK_F_STACK_BATCH_POP_UPMC
@@ -106,6 +153,7 @@ ck_stack_batch_pop_upmc(struct ck_stack *target)
 	struct ck_stack_entry *entry;
 
 	entry = ck_pr_fas_ptr(&target->head, NULL);
+	ck_pr_fence_load();
 	return (entry);
 }
 #endif /* CK_F_STACK_BATCH_POP_UPMC */
@@ -124,6 +172,19 @@ ck_stack_push_mpmc(struct ck_stack *target, struct ck_stack_entry *entry)
 }
 #endif /* CK_F_STACK_PUSH_MPMC */
 
+#ifndef CK_F_STACK_TRYPUSH_MPMC
+#define CK_F_STACK_TRYPUSH_MPMC
+/*
+ * Stack producer operation safe for multiple producers and multiple consumers.
+ */
+CK_CC_INLINE static bool
+ck_stack_trypush_mpmc(struct ck_stack *target, struct ck_stack_entry *entry)
+{
+
+	return ck_stack_trypush_upmc(target, entry);
+}
+#endif /* CK_F_STACK_TRYPUSH_MPMC */
+
 #ifdef CK_F_PR_CAS_PTR_2_VALUE
 #ifndef CK_F_STACK_POP_MPMC
 #define CK_F_STACK_POP_MPMC
@@ -133,13 +194,14 @@ ck_stack_push_mpmc(struct ck_stack *target, struct ck_stack_entry *entry)
 CK_CC_INLINE static struct ck_stack_entry *
 ck_stack_pop_mpmc(struct ck_stack *target)
 {
-	ck_backoff_t backoff = CK_BACKOFF_INITIALIZER;
 	struct ck_stack original, update;
 
 	original.generation = ck_pr_load_ptr(&target->generation);
 	original.head = ck_pr_load_ptr(&target->head);
 	if (original.head == NULL)
 		return (NULL);
+
+	ck_pr_fence_load();
 
 	update.generation = original.generation + 1;
 	update.head = original.head->next;
@@ -148,15 +210,40 @@ ck_stack_pop_mpmc(struct ck_stack *target)
 		if (original.head == NULL)
 			return (NULL);
 
-		ck_backoff_eb(&backoff);
+		update.generation = original.generation + 1;
 
-		ck_pr_store_ptr(&update.generation, original.generation + 1);
-		ck_pr_store_ptr(&update.head, original.head->next);
+		ck_pr_fence_load();
+		update.head = original.head->next;
 	}
 
 	return (original.head);
 }
 #endif /* CK_F_STACK_POP_MPMC */
+
+#ifndef CK_F_STACK_TRYPOP_MPMC
+#define CK_F_STACK_TRYPOP_MPMC
+CK_CC_INLINE static bool
+ck_stack_trypop_mpmc(struct ck_stack *target, struct ck_stack_entry **r)
+{
+	struct ck_stack original, update;
+
+	original.generation = ck_pr_load_ptr(&target->generation);
+	original.head = ck_pr_load_ptr(&target->head);
+	if (original.head == NULL)
+		return false;
+
+	update.generation = original.generation + 1;
+	ck_pr_fence_load();
+	update.head = original.head->next;
+
+	if (ck_pr_cas_ptr_2_value(target, &original, &update, &original) == true) {
+		*r = original.head;
+		return true;
+	}
+
+	return false;
+}
+#endif /* CK_F_STACK_TRYPOP_MPMC */
 #endif /* CK_F_PR_CAS_PTR_2_VALUE */
 
 #ifndef CK_F_STACK_BATCH_POP_MPMC
@@ -245,10 +332,7 @@ ck_stack_init(struct ck_stack *stack)
 {
 
 	stack->head = NULL;
-	stack->generation = 0;
-
-	ck_pr_fence_store();
-
+	stack->generation = NULL;
 	return;
 }
 

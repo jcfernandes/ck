@@ -77,8 +77,7 @@ main(void)
 	ck_ht_iterator_t iterator = CK_HT_ITERATOR_INITIALIZER;
 	ck_ht_entry_t *cursor;
 
-	ck_ht_allocator_set(&my_allocator);
-	if (ck_ht_init(&ht, CK_HT_MODE_BYTESTRING, 8, 6602834) == false) {
+	if (ck_ht_init(&ht, CK_HT_MODE_BYTESTRING, NULL, &my_allocator, 8, 6602834) == false) {
 		perror("ck_ht_init");
 		exit(EXIT_FAILURE);
 	}
@@ -247,7 +246,7 @@ main(void)
 	}
 
 	ck_ht_destroy(&ht);
-	if (ck_ht_init(&ht, CK_HT_MODE_DIRECT, 8, 6602834) == false) {
+	if (ck_ht_init(&ht, CK_HT_MODE_DIRECT, NULL, &my_allocator, 8, 6602834) == false) {
 		perror("ck_ht_init");
 		exit(EXIT_FAILURE);
 	}
@@ -255,7 +254,7 @@ main(void)
 	l = 0;
 	for (i = 0; i < sizeof(direct) / sizeof(*direct); i++) {
 		ck_ht_hash_direct(&h, &ht, direct[i]);
-		ck_ht_entry_set_direct(&entry, direct[i], (uintptr_t)test[i]);
+		ck_ht_entry_set_direct(&entry, h, direct[i], (uintptr_t)test[i]);
 		l += ck_ht_put_spmc(&ht, h, &entry) == false;
 	}
 
@@ -266,7 +265,7 @@ main(void)
 
 	for (i = 0; i < sizeof(direct) / sizeof(*direct); i++) {
 		ck_ht_hash_direct(&h, &ht, direct[i]);
-		ck_ht_entry_set_direct(&entry, direct[i], (uintptr_t)"REPLACED");
+		ck_ht_entry_set_direct(&entry, h, direct[i], (uintptr_t)"REPLACED");
 		l += ck_ht_set_spmc(&ht, h, &entry) == false;
 	}
 
