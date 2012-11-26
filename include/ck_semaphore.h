@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 João Fernandes.
+ * Copyright 2012 João Fernandes
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,11 +40,13 @@ CK_CC_INLINE static void
 ck_semaphore_init(struct ck_semaphore * sem, unsigned int value)
 {
 	ck_pr_store_uint(&sem->counter, value);
+	return;
 }
 
 CK_CC_INLINE static unsigned int
 ck_semaphore_getvalue(struct ck_semaphore * sem)
 {
+	ck_pr_fence_load();
 	return ck_pr_load_uint(&sem->counter);
 }
 
@@ -56,6 +58,8 @@ ck_semaphore_wait(struct ck_semaphore * sem)
 		if (current != 0) continue;
 		while ((current = ck_pr_load_uint(&sem->counter)) == 0) ck_pr_stall();
 	} while (ck_pr_cas_uint_value(&sem->counter, current, current - 1, &current) == false);
+	ck_pr_fence_memory();
+	return;
 }
 
 CK_CC_INLINE static bool
@@ -63,14 +67,20 @@ ck_semaphore_trywait(struct ck_semaphore * sem)
 {
 	unsigned int current = ck_pr_load_uint(&sem->counter);
 	if (current == 0) return false;
-	return ck_pr_cas_uint(&sem->counter, current, current - 1);
+	if (ck_pr_cas_uint(&sem->counter, current, current - 1) == true) {
+		ck_pr_fence_memory();
+		return true;
+	}
+	return false;
 }
 
 CK_CC_INLINE static void
 ck_semaphore_signal(struct ck_semaphore * sem)
 {
-	ck_pr_faa_uint(&sem->counter, 1);
+	ck_pr_fence_memory();
+	ck_pr_inc_uint(&sem->counter);
+	return;
 }
 
 #endif /* _CK_SEMAPHORE_H */
- 
+
