@@ -52,7 +52,7 @@
 #define CK_HT_BUCKET_SHIFT 1ULL
 #endif
 
-#define CK_HT_BUCKET_LENGTH (1 << CK_HT_BUCKET_SHIFT)
+#define CK_HT_BUCKET_LENGTH (1U << CK_HT_BUCKET_SHIFT)
 #define CK_HT_BUCKET_MASK (CK_HT_BUCKET_LENGTH - 1)
 #endif
 
@@ -73,6 +73,17 @@ struct ck_ht_map {
 	uint64_t step;
 	struct ck_ht_entry *entries;
 };
+
+void
+ck_ht_stat(struct ck_ht *table,
+	   struct ck_ht_stat *st)
+{
+	struct ck_ht_map *map = table->map;
+
+	st->n_entries = map->n_entries;
+	st->probe_maximum = map->probe_maximum;
+	return;
+}
 
 void
 ck_ht_hash(struct ck_ht_hash *h,
@@ -258,7 +269,7 @@ retry:
 					continue;
 
 #ifdef CK_HT_PP
-				if (cursor->value >> 48 != ((h.value >> 32) & 0xFFFF))
+				if ((cursor->value >> CK_MD_VMA_BITS) != ((h.value >> 32) & CK_HT_KEY_MASK))
 					continue;
 #else
 				if (cursor->hash != h.value)
@@ -369,7 +380,7 @@ retry:
 				if (k != key_length)
 					continue;
 #ifdef CK_HT_PP
-				if (snapshot->value >> 48 != ((h.value >> 32) & 0xFFFF))
+				if ((snapshot->value >> CK_MD_VMA_BITS) != ((h.value >> 32) & CK_HT_KEY_MASK))
 					continue;
 #else
 				if (snapshot->hash != h.value)

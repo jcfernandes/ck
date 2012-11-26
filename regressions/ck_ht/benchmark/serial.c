@@ -176,14 +176,14 @@ main(int argc, char *argv[])
 	unsigned int d = 0;
 	uint64_t s, e, a, ri, si, ai, sr, rg, sg, ag, sd, ng;
 	char **t;
+	struct ck_ht_stat st;
 
 	r = 20;
 	s = 8;
 	srand(time(NULL));
 
 	if (argc < 2) {
-		fprintf(stderr, "Usage: ck_ht <dictionary> [<repetitions> <initial size>]\n");
-		exit(EXIT_FAILURE);
+		ck_error("Usage: ck_ht <dictionary> [<repetitions> <initial size>]\n");
 	}
 
 	if (argc >= 3)
@@ -218,17 +218,17 @@ main(int argc, char *argv[])
 
 	for (i = 0; i < keys_length; i++)
 		d += table_insert(keys[i]) == false;
+	ck_ht_stat(&ht, &st);
 
-	fprintf(stderr, "# %zu entries stored and %u duplicates.\n",
-	    table_count(), d);
+	fprintf(stderr, "# %zu entries stored, %u duplicates, %" PRIu64 " probe.\n",
+	    table_count(), d, st.probe_maximum);
 
 	fprintf(stderr, "#    reverse_insertion serial_insertion random_insertion serial_replace reverse_get serial_get random_get serial_remove negative_get\n\n");
 
 	a = 0;
 	for (j = 0; j < r; j++) {
 		if (table_reset() == false) {
-			fprintf(stderr, "ERROR: Failed to reset hash table.\n");
-			exit(EXIT_FAILURE);
+			ck_error("ERROR: Failed to reset hash table.\n");
 		}
 
 		s = rdtsc();
@@ -242,8 +242,7 @@ main(int argc, char *argv[])
 	a = 0;
 	for (j = 0; j < r; j++) {
 		if (table_reset() == false) {
-			fprintf(stderr, "ERROR: Failed to reset hash table.\n");
-			exit(EXIT_FAILURE);
+			ck_error("ERROR: Failed to reset hash table.\n");
 		}
 
 		s = rdtsc();
@@ -259,8 +258,7 @@ main(int argc, char *argv[])
 		keys_shuffle(keys);
 
 		if (table_reset() == false) {
-			fprintf(stderr, "ERROR: Failed to reset hash table.\n");
-			exit(EXIT_FAILURE);
+			ck_error("ERROR: Failed to reset hash table.\n");
 		}
 
 		s = rdtsc();
@@ -290,8 +288,7 @@ main(int argc, char *argv[])
 		s = rdtsc();
 		for (i = keys_length; i > 0; i--) {
 			if (table_get(keys[i - 1]) == NULL) {
-				fprintf(stderr, "ERROR: Unexpected NULL value.\n");
-				exit(EXIT_FAILURE);
+				ck_error("ERROR: Unexpected NULL value.\n");
 			}
 		}
 		e = rdtsc();
@@ -304,8 +301,7 @@ main(int argc, char *argv[])
 		s = rdtsc();
 		for (i = 0; i < keys_length; i++) {
 			if (table_get(keys[i]) == NULL) {
-				fprintf(stderr, "ERROR: Unexpected NULL value.\n");
-				exit(EXIT_FAILURE);
+				ck_error("ERROR: Unexpected NULL value.\n");
 			}
 		}
 		e = rdtsc();
@@ -320,8 +316,7 @@ main(int argc, char *argv[])
 		s = rdtsc();
 		for (i = 0; i < keys_length; i++) {
 			if (table_get(keys[i]) == NULL) {
-				fprintf(stderr, "ERROR: Unexpected NULL value.\n");
-				exit(EXIT_FAILURE);
+				ck_error("ERROR: Unexpected NULL value.\n");
 			}
 		}
 		e = rdtsc();
@@ -363,7 +358,7 @@ main(int argc, char *argv[])
 	    "%" PRIu64 " "
 	    "%" PRIu64 " "
 	    "%" PRIu64 "\n",
-	    keys_length, ri, si, ai, sr, rg, sg, rg, sd, ng);
+	    keys_length, ri, si, ai, sr, rg, sg, ag, sd, ng);
 
 	return 0;
 }
