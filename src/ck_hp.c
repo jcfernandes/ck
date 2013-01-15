@@ -1,5 +1,5 @@
 /*
- * Copyright 2010 Samy Al Bahra.
+ * Copyright 2010-2013 Samy Al Bahra.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -316,7 +316,7 @@ ck_hp_purge(struct ck_hp_record *thread)
 	while (thread->n_pending > 0) {
 		ck_hp_reclaim(thread);
 		if (thread->n_pending > 0)
-			ck_backoff_gb(&backoff);
+			ck_backoff_eb(&backoff);
 	}
 
 	return;

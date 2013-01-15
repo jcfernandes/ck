@@ -1,5 +1,5 @@
 /*
- * Copyright 2011-2012 Samy Al Bahra.
+ * Copyright 2011-2013 Samy Al Bahra.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,6 +27,7 @@
 #include <ck_cc.h>
 #include <ck_pr.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #ifdef __linux__

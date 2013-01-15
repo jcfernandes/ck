@@ -1,5 +1,5 @@
 /*
- * Copyright 2009-2012 Samy Al Bahra.
+ * Copyright 2009-2013 Samy Al Bahra.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,11 +52,11 @@
 			    unsigned int size)					\
 	{									\
 										\
-		ck_pr_store_uint(&ring->size, size);				\
-		ck_pr_store_uint(&ring->mask, size - 1);			\
-		ck_pr_store_uint(&ring->p_tail, 0);				\
-		ck_pr_store_uint(&ring->c_head, 0);				\
-		ck_pr_store_ptr(&ring->ring, buffer);				\
+		ring->size = size;						\
+		ring->mask = size - 1;						\
+		ring->p_tail = 0;						\
+		ring->c_head = 0;						\
+		ring->ring = buffer;						\
 		return;								\
 	}									\
 	CK_CC_INLINE static unsigned int					\
@@ -98,6 +98,7 @@
 				    struct type *data)				\
 	{									\
 		unsigned int consumer, producer;				\
+		unsigned int mask = ring->mask;					\
 										\
 		consumer = ring->c_head;					\
 		producer = ck_pr_load_uint(&ring->p_tail);			\
@@ -106,7 +107,7 @@
 			return (false);						\
 										\
 		ck_pr_fence_load();						\
-		*data = ring->ring[consumer & ring->mask];			\
+		*data = ring->ring[consumer & mask];				\
 		ck_pr_fence_store();						\
 		ck_pr_store_uint(&ring->c_head, consumer + 1);			\
 										\
@@ -123,6 +124,7 @@
 				       struct type *data)			\
 	{									\
 		unsigned int consumer, producer;				\
+		unsigned int mask = ring->mask;					\
 										\
 		consumer = ck_pr_load_uint(&ring->c_head);			\
 		ck_pr_fence_load();						\
@@ -132,7 +134,7 @@
 			return false;						\
 										\
 		ck_pr_fence_load();						\
-		*data = ring->ring[consumer & ring->mask];			\
+		*data = ring->ring[consumer & mask];				\
 		ck_pr_fence_memory();						\
 		return ck_pr_cas_uint(&ring->c_head,				\
 				      consumer,					\
@@ -143,6 +145,7 @@
 				    struct type *data)				\
 	{									\
 		unsigned int consumer, producer;				\
+		unsigned int mask = ring->mask;					\
 										\
 		consumer = ck_pr_load_uint(&ring->c_head);			\
 		do {								\
@@ -153,7 +156,7 @@
 				return false;					\
 										\
 			ck_pr_fence_load();					\
-			*data = ring->ring[consumer & ring->mask];		\
+			*data = ring->ring[consumer & mask];			\
 			ck_pr_fence_memory();					\
 		} while (ck_pr_cas_uint_value(&ring->c_head,			\
 					      consumer,				\
@@ -245,6 +248,7 @@ CK_CC_INLINE static bool
 ck_ring_dequeue_spsc(struct ck_ring *ring, void *data)
 {
 	unsigned int consumer, producer;
+	unsigned int mask = ring->mask;
 
 	consumer = ring->c_head;
 	producer = ck_pr_load_uint(&ring->p_tail);
@@ -265,7 +269,7 @@ ck_ring_dequeue_spsc(struct ck_ring *ring, void *data)
 	 * troublesome on platforms where sizeof(void *)
 	 * is not guaranteed to be sizeof(T *).
 	 */
-	ck_pr_store_ptr(data, ring->ring[consumer & ring->mask]);
+	ck_pr_store_ptr(data, ring->ring[consumer & mask]);
 	ck_pr_fence_store();
 	ck_pr_store_uint(&ring->c_head, consumer + 1);
 	return true;
@@ -282,6 +286,7 @@ CK_CC_INLINE static bool
 ck_ring_trydequeue_spmc(struct ck_ring *ring, void *data)
 {
 	unsigned int consumer, producer;
+	unsigned int mask = ring->mask;
 
 	consumer = ck_pr_load_uint(&ring->c_head);
 	ck_pr_fence_load();
@@ -291,7 +296,7 @@ ck_ring_trydequeue_spmc(struct ck_ring *ring, void *data)
 		return false;
 
 	ck_pr_fence_load();
-	ck_pr_store_ptr(data, ring->ring[consumer & ring->mask]);
+	ck_pr_store_ptr(data, ring->ring[consumer & mask]);
 	ck_pr_fence_memory();
 
 	return ck_pr_cas_uint(&ring->c_head, consumer, consumer + 1);
@@ -301,6 +306,7 @@ CK_CC_INLINE static bool
 ck_ring_dequeue_spmc(struct ck_ring *ring, void *data)
 {
 	unsigned int consumer, producer;
+	unsigned int mask = ring->mask;
 	void *r;
 
 	consumer = ck_pr_load_uint(&ring->c_head);
@@ -317,7 +323,15 @@ ck_ring_dequeue_spmc(struct ck_ring *ring, void *data)
 			return false;
 
 		ck_pr_fence_load();
-		r = ring->ring[consumer & ring->mask];
+		
+		/*
+		 * Both LLVM and GCC have generated code which completely
+		 * ignores the semantics of the r load, despite it being
+		 * sandwiched between compiler barriers. We use an atomic
+		 * volatile load to force volatile semantics while allowing
+		 * for r itself to remain aliased across the loop.
+		 */
+		r = ck_pr_load_ptr(&ring->ring[consumer & mask]);
 
 		/* Serialize load with respect to head update. */
 		ck_pr_fence_memory();
@@ -326,6 +340,10 @@ ck_ring_dequeue_spmc(struct ck_ring *ring, void *data)
 				      consumer + 1,
 				      &consumer) == false);
 
+	/*
+	 * Force spillage while avoiding aliasing issues that aren't
+	 * a problem on POSIX.
+	 */
 	ck_pr_store_ptr(data, r);
 	return true;
 }
