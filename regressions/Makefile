@@ -41,6 +41,7 @@ all:
 	$(MAKE) -C ./ck_bytelock/validate all
 	$(MAKE) -C ./ck_bytelock/benchmark all
 	$(MAKE) -C ./ck_epoch/validate all
+	$(MAKE) -C ./ck_eventcounter/validate all
 	$(MAKE) -C ./ck_sequence/validate all
 	$(MAKE) -C ./ck_stack/validate all
 	$(MAKE) -C ./ck_stack/benchmark all
@@ -74,6 +75,7 @@ clean:
 	$(MAKE) -C ./ck_bytelock/validate clean
 	$(MAKE) -C ./ck_bytelock/benchmark clean
 	$(MAKE) -C ./ck_epoch/validate clean
+	$(MAKE) -C ./ck_eventcounter/validate clean
 	$(MAKE) -C ./ck_sequence/validate clean
 	$(MAKE) -C ./ck_stack/validate clean
 	$(MAKE) -C ./ck_stack/benchmark clean
