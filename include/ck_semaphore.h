@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 João Fernandes
+ * Copyright 2012-2013 João Fernandes.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -37,21 +37,21 @@ struct ck_semaphore {
 typedef struct ck_semaphore ck_semaphore_t;
 
 CK_CC_INLINE static void
-ck_semaphore_init(struct ck_semaphore * sem, unsigned int value)
+ck_semaphore_init(struct ck_semaphore *sem, unsigned int value)
 {
-	ck_pr_store_uint(&sem->counter, value);
+	sem->counter = value;
 	return;
 }
 
 CK_CC_INLINE static unsigned int
-ck_semaphore_getvalue(struct ck_semaphore * sem)
+ck_semaphore_getvalue(struct ck_semaphore *sem)
 {
 	ck_pr_fence_load();
 	return ck_pr_load_uint(&sem->counter);
 }
 
 CK_CC_INLINE static void
-ck_semaphore_wait(struct ck_semaphore * sem)
+ck_semaphore_wait(struct ck_semaphore *sem)
 {
 	unsigned int current = ck_pr_load_uint(&sem->counter);
 	do {
@@ -63,7 +63,7 @@ ck_semaphore_wait(struct ck_semaphore * sem)
 }
 
 CK_CC_INLINE static bool
-ck_semaphore_trywait(struct ck_semaphore * sem)
+ck_semaphore_trywait(struct ck_semaphore *sem)
 {
 	unsigned int current = ck_pr_load_uint(&sem->counter);
 	if (current == 0) return false;
@@ -75,7 +75,7 @@ ck_semaphore_trywait(struct ck_semaphore * sem)
 }
 
 CK_CC_INLINE static void
-ck_semaphore_signal(struct ck_semaphore * sem)
+ck_semaphore_signal(struct ck_semaphore *sem)
 {
 	ck_pr_fence_memory();
 	ck_pr_inc_uint(&sem->counter);
@@ -83,4 +83,3 @@ ck_semaphore_signal(struct ck_semaphore * sem)
 }
 
 #endif /* _CK_SEMAPHORE_H */
-
