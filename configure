@@ -31,8 +31,9 @@ REQUIRE_HEADER="stdbool.h stddef.h stdint.h string.h"
 EXIT_SUCCESS=0
 EXIT_FAILURE=1
 
+P_PWD=`pwd`
 MAINTAINER='sbahra@repnop.org'
-VERSION=${VERSION:-'0.2.13'}
+VERSION=${VERSION:-'0.2.17'}
 VERSION_MAJOR='0'
 BUILD="$PWD/build/ck.build"
 PREFIX=${PREFIX:-"/usr/local"}
@@ -96,6 +97,8 @@ generate()
 	    -e "s#@VMA_BITS@#$VMA_BITS_R#g"			\
 	    -e "s#@VMA_BITS_VALUE@#$VMA_BITS_VALUE_R#g"		\
 	    -e "s#@MM@#$MM#g"					\
+	    -e "s#@BUILD_DIR@#$P_PWD#g"				\
+	    -e "s#@SRC_DIR@#$BUILD_DIR#g"			\
 		$1 > $2
 }
 
@@ -104,6 +107,9 @@ generate_stdout()
 
 	echo
 	echo "           VERSION = $VERSION"
+	echo "         BUILD_DIR = $P_PWD"
+	echo "           SRC_DIR = $BUILD_DIR"
+	echo "            SYSTEM = $SYSTEM"
 	echo "           PROFILE = $PROFILE"
 	echo "                CC = $CC"
 	echo "          COMPILER = $COMPILER"
@@ -127,7 +133,7 @@ for option in $*; do
 
 	case "$option" in
 	--help)
-		echo "Usage: ./configure [OPTIONS]"
+		echo "Usage: $0 [OPTIONS]"
 		echo
 		echo "The following options may be used for cross-building."
 		echo "  --profile=N              Use custom build profile (use in conjunction with \$CC)"
@@ -194,8 +200,14 @@ for option in $*; do
 	--mandir=*)
 		MANDIR=$value
 		;;
+	*=*)
+		NAME=`expr "$option" : '\([^=]*\)='`
+		VALUE=`echo "$value" | sed "s/'/'\\\\\\\\''/g"`
+		eval "$NAME='$VALUE'"
+		export $NAME
+		;;
 	*)
-		echo "./configure [--help]"
+		echo "$0 [--help]"
 		exit $EXIT_FAILURE
 		;;
 	esac
@@ -266,6 +278,11 @@ case "$SYSTEM" in
 	"Darwin")
 		DCORES=`sysctl -n hw.ncpu`
 		SYSTEM=darwin
+		;;
+	MINGW32*)
+		DCORES=2
+		SYSTEM=mingw32
+		LDFLAGS="-mthreads $LDFLAGS"
 		;;
 	*)
 		SYSTEM=
@@ -422,6 +439,27 @@ pathsearch()
 	IFS="$oldFS"
 }
 
+printf "Finding dirname command.........."
+DIRNAME=`pathsearch "${DIRNAME:-dirname}"`
+if test -z "$DIRNAME" -o ! -x "$DIRNAME"; then
+	DIRNAME=`pathsearch "${DIRNAME:-dirname}"`
+	DIRNAME="$DIRNAME"
+else
+	echo "success [$DIRNAME]"
+fi
+
+if test -z "$DIRNAME"; then
+	echo "not found (out of source build unsupported)"
+else
+	printf "Determining build directory......"
+
+	BUILD_DIR=`$DIRNAME $0`
+	cd `$DIRNAME $0`
+	BUILD_DIR=`pwd`
+
+	echo "success [$BUILD_DIR]"
+fi
+
 printf "Finding gzip tool................"
 GZIP=`pathsearch "${GZIP:-gzip}"`
 if test -z "$GZIP" -o ! -x "$GZIP"; then
@@ -449,11 +487,21 @@ assert "$CC" "not found"
 cat << EOF > .1.c
 #include <stdio.h>
 int main(void) {
-#if defined(__GNUC__) && (__GNUC__ >= 4)
-	puts("gcc");
+#if defined(_WIN32)
+#if defined(__MINGW32__) && (__MINGW32_MAJOR_VERSION >= 3)
+	puts("mingw32");
+	return (0);
+#else
+	return (1);
+#endif /* __MINGW32__ && __MINGW32_MAJOR_VERSION >= 3 */
+#elif defined(__clang__) && (__clang_major__ >= 4)
+	puts("clang");
 	return (0);
 #elif defined(__SUNPRO_C) && (__SUNPRO_C >= 0x5110)
 	puts("suncc");
+	return (0);
+#elif defined(__GNUC__) && (__GNUC__ >= 4)
+	puts("gcc");
 	return (0);
 #else
 	return (1);
@@ -477,7 +525,7 @@ if test "$COMPILER" = "suncc"; then
 	LDFLAGS="-G -z text -h libck.so.$VERSION_MAJOR $LDFLAGS"
 	CFLAGS="-xO5 $CFLAGS"
 	PTHREAD_CFLAGS="-mt -lpthread"
-elif test "$COMPILER" = "gcc"; then
+elif test "$COMPILER" = "gcc" || test "$COMPILER" = "clang" || test "$COMPILER" = "mingw32"; then
 	LD=$CC
 	if test "$SYSTEM" = "darwin"; then
 		CC_WL_OPT="-install_name"
@@ -516,12 +564,27 @@ echo "success"
 
 printf "Generating build files..........."
 
-generate doc/Makefile.in doc/Makefile
-generate build/ck.build.in build/ck.build
-generate build/regressions.build.in build/regressions.build
-generate build/ck.pc.in build/ck.pc
-generate build/ck.spec.in build/ck.spec
-generate Makefile.in Makefile
+mkdir -p $P_PWD/doc
+mkdir -p $P_PWD/build
+mkdir -p $P_PWD/include
+mkdir -p $P_PWD/src
+
+if test "$P_PWD" '!=' "$BUILD_DIR"; then
+	mkdir -p $P_PWD/regressions
+	cp $BUILD_DIR/regressions/Makefile.unsupported $P_PWD/regressions/Makefile &> /dev/null
+fi
+
+cp $BUILD_DIR/build/ck.build.$PROFILE $P_PWD/build/ck.build.$PROFILE &> /dev/null
+cp $BUILD_DIR/include/ck_md.h $P_PWD/include/ck_md.h &> /dev/null
+
+generate src/Makefile.in $P_PWD/src/Makefile
+generate doc/Makefile.in $P_PWD/doc/Makefile
+generate build/ck.build.in $P_PWD/build/ck.build
+generate build/regressions.build.in $P_PWD/build/regressions.build
+generate build/ck.pc.in $P_PWD/build/ck.pc
+generate build/ck.spec.in $P_PWD/build/ck.spec
+generate Makefile.in $P_PWD/Makefile
 
 echo "success"
 generate_stdout
+
