@@ -40,6 +40,7 @@ CK_CC_INLINE static void
 ck_semaphore_init(struct ck_semaphore *sem, unsigned int value)
 {
 	sem->counter = value;
+        ck_pr_fence_store();
 	return;
 }
 
