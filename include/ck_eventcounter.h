@@ -47,9 +47,9 @@ typedef struct ck_eventcounter_state ck_eventcounter_state_t;
 typedef CK_LIST_HEAD(ck_eventcounter_waitset, ck_eventcounter_state) ck_eventcounter_waitset_t;
 
 struct ck_eventcounter {
-	ck_spinlock_t lock; // TODO: make type of spinlock configurable?
-	ck_eventcounter_waitset_t waitset;
-	unsigned int epoch;
+        ck_spinlock_t lock; // TODO: make type of spinlock configurable?
+        ck_eventcounter_waitset_t waitset;
+        unsigned int epoch;
 };
 typedef struct ck_eventcounter ck_eventcounter_t;
 
@@ -60,6 +60,10 @@ ck_eventcounter_state_init(struct ck_eventcounter_state *state)
 	state->epoch = 0;
 	state->in_waitset = false;
 	state->spurious = false;
+        /*
+         * No need for memory fence as all accesses to shared data
+         * are synchronized.
+         */
 	return;
 }
 
@@ -69,7 +73,6 @@ ck_eventcounter_init(struct ck_eventcounter *ec)
 	ck_spinlock_init(&ec->lock);
 	CK_LIST_INIT(&ec->waitset);
 	ec->epoch = 0;
-	ck_pr_fence_store();
 	return;
 }
 
@@ -82,16 +85,11 @@ ck_eventcounter_prepare_wait(struct ck_eventcounter *ec,
 		ck_semaphore_wait(&state->sem);
 	}
 
-	/*
-	* Can the next line ever be reordered in a way that the store
-	* precedes the if statement above?
-	* */
-	state->in_waitset = true;
 	ck_spinlock_lock(&ec->lock);
 	state->epoch = ec->epoch;
 	CK_LIST_INSERT_HEAD(&ec->waitset, state, node);
+	state->in_waitset = true;
 	ck_spinlock_unlock(&ec->lock);
-	ck_pr_fence_memory();
 	return;
 }
 
@@ -99,26 +97,21 @@ CK_CC_INLINE static void
 ck_eventcounter_retire_wait(struct ck_eventcounter *ec,
                             struct ck_eventcounter_state *state)
 {
-	/*
-	* Can the next line ever be reordered in a way that the store
-	* succeeds the if statement that comes immediately after?
-	* */
-	state->spurious = true;
-
-	/*
-	* Without using ck's load interface in both if statements, the
-	* compiler would be free to optimize this code, loading
-	* state->in_waitset just once, correct?
-	* */
+        state->spurious = true;
+        /*
+         * TODO(?): is the following DCL correctly implemented?
+         */
 	if (ck_pr_load_char(&state->in_waitset)) {
 		ck_spinlock_lock(&ec->lock);
 		if (ck_pr_load_char(&state->in_waitset)) {
+			CK_LIST_REMOVE(state, node);
 			state->in_waitset = false;
 			state->spurious = false;
-			CK_LIST_REMOVE(state, node);
 		}
+
 		ck_spinlock_unlock(&ec->lock);
 	}
+
 	return;
 }
 
@@ -126,11 +119,22 @@ CK_CC_INLINE static void
 ck_eventcounter_wait(struct ck_eventcounter *ec,
                      struct ck_eventcounter_state *state)
 {
+        /*
+         * The calling thread has to serialize with the signaling thread.
+         */
 	if (state->epoch == ec->epoch) {
+                /*
+                 * Full memory fence inside.
+                 */
 		ck_semaphore_wait(&state->sem);
 	} else {
+                /*
+                 * Load memory fence to serialize with the signaling thread.
+                 */
+                ck_pr_fence_load();
 		ck_eventcounter_retire_wait(ec, state);
 	}
+
 	return;
 }
 
@@ -140,23 +144,26 @@ ck_eventcounter_notify_one(struct ck_eventcounter *ec)
 	ck_eventcounter_state_t *state;
 
 	ck_pr_fence_memory();
-
 	if (CK_LIST_EMPTY(&ec->waitset)) return;
 
 	ck_spinlock_lock(&ec->lock);
-	ec->epoch++;
 	state = CK_LIST_FIRST(&ec->waitset);
-
 	if (state != NULL) {
-		CK_LIST_REMOVE(state, node);
 		state->in_waitset = false;
+		CK_LIST_REMOVE(state, node);
 	}
 
+        /*
+         * Incrementing the epoch comes in the end of this critical section
+         * in order to minimize the chance of having waiting threads
+         * going through the slow path.
+         */
+	ec->epoch++;
 	ck_spinlock_unlock(&ec->lock);
-
 	if (state != NULL) {
 		ck_semaphore_signal(&state->sem);
 	}
+
 	return;
 }
 
@@ -164,26 +171,24 @@ CK_CC_INLINE static void
 ck_eventcounter_notify_all(struct ck_eventcounter *ec)
 {
 	ck_eventcounter_state_t *state, *tmp_state;
-	ck_eventcounter_waitset_t tmp_waitset;
 
 	ck_pr_fence_memory();
-
 	if (CK_LIST_EMPTY(&ec->waitset)) return;
 
 	ck_spinlock_lock(&ec->lock);
-	ec->epoch++;
-
-	CK_LIST_FOREACH(state, &ec->waitset, node) {
+        /*
+         * Either we deep copy the waitset and are able to signal threads
+         * outside the critical section, or we have to do it inside
+         * the critical section as it is now.
+         */
+	CK_LIST_FOREACH_SAFE(state, &ec->waitset, node, tmp_state) {
 		state->in_waitset = false;
+                ck_semaphore_signal(&state->sem);
 	}
 
-	tmp_waitset = ec->waitset;
 	CK_LIST_RESET(&ec->waitset);
+	ec->epoch++;
 	ck_spinlock_unlock(&ec->lock);
-
-	CK_LIST_FOREACH_SAFE(state, &tmp_waitset, node, tmp_state) {
-		ck_semaphore_signal(&state->sem);
-	}
 	return;
 }
 

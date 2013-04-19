@@ -238,6 +238,10 @@ struct {									\
 	ck_pr_fence_store();							\
 } while (0)
 
+#define	CK_LIST_RESET(head) do {						\
+	ck_pr_store_ptr(&(head)->lh_first, NULL);				\
+} while (0)
+
 #define	CK_LIST_INSERT_AFTER(listelm, elm, field) do {				\
 	(elm)->field.le_next = (listelm)->field.le_next;			\
 	(elm)->field.le_prev = &(listelm)->field.le_next;			\
