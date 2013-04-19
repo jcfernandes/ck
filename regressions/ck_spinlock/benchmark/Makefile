@@ -74,7 +74,7 @@ ck_anderson.LATENCY: ck_anderson.c
 	$(CC) -DLATENCY -o ck_anderson.LATENCY ck_anderson.c $(CFLAGS) 
 
 clean:
-	rm -rf *.dSYM $(OBJECTS)
+	rm -rf *.dSYM *.exe $(OBJECTS)
 
 include ../../../build/regressions.build
 CFLAGS+=$(PTHREAD_CFLAGS) -D_GNU_SOURCE -lm

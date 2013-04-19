@@ -84,7 +84,31 @@ OBJECTS=ck_ht_count 	  		\
 	CK_COHORT_INIT			\
 	CK_COHORT_LOCK			\
 	CK_COHORT_UNLOCK		\
-	CK_COHORT_TRYLOCK
+	CK_COHORT_TRYLOCK		\
+	ck_pr				\
+	ck_pr_barrier			\
+	ck_pr_fas			\
+	ck_pr_fence_load		\
+	ck_pr_fence_load_depends	\
+	ck_pr_fence_memory		\
+	ck_pr_fence_store		\
+	ck_pr_stall			\
+	ck_pr_faa			\
+	ck_pr_inc			\
+	ck_pr_dec			\
+	ck_pr_not			\
+	ck_pr_neg			\
+	ck_pr_add			\
+	ck_pr_sub			\
+	ck_pr_and			\
+	ck_pr_xor			\
+	ck_pr_or			\
+	ck_pr_cas			\
+	ck_pr_bts			\
+	ck_pr_btc			\
+	ck_pr_btr			\
+	ck_pr_store			\
+	ck_pr_load
 
 all: 
 	for target in $(OBJECTS); do 			   \
@@ -94,7 +118,7 @@ all:
 html:
 	for target in $(OBJECTS); do 			   \
 		echo $$target;				   \
-		groff -man -Tascii $(SRC_DIR)/doc/$$target | man2html -noheads -bare -compress -cgiurl='$$title.html' > $(BUILD_DIR)/doc/$$target$(HTML_SUFFIX); \
+		groff -man -Tascii $(SRC_DIR)/doc/$$target | man2html -noheads -bare -cgiurl='$$title.html' > $(BUILD_DIR)/doc/$$target$(HTML_SUFFIX); \
 	done
 
 install:
